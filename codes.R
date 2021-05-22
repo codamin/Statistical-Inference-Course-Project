@@ -4,16 +4,21 @@ library(psych)
 library(GGally)
 library(reshape2)
 library(scatterplot3d)
-library(ggmosaic)
 library(moments)
 library(Hmisc)
-
+library(ggpubr)
+library(ggExtra)
 
 data <- read.csv('StudentsPerformance.csv')
 
+################################################################################
+# Problem 0
+################################################################################
 num_variables <- ncol(data)
 num_cases <- nrow(data)
+cat('there are', num_variables, 'variables and', num_cases, 'cases in the dataset')
 
+sum(is.na(data))
 ################################################################################
 # Problem 1
 ################################################################################
@@ -47,7 +52,6 @@ p <- ggplot(data,
 show(p)
 ################################################################################
 # 1.c
-library(moments)
 cat("skewness of absences:", round(skewness(data$absences), 2), '\n')
 ################################################################################
 # 1.d
@@ -79,7 +83,7 @@ p <- ggplot(data,
     legend.box.background = element_rect(color="red", size=2),
     legend.box.margin = margin(116, 6, 6, 6)
   ) +
-  labs(title=paste("Mean and Median on Density of absences ", var_1),
+  labs(title=paste("Mean(blue) and Median(red) on Density of absences", var_1),
        x="absences", y="density") +
   theme(plot.title = element_text(hjust = 0.5))
 
@@ -122,7 +126,7 @@ cat("IQR=", Q3 - Q1, '\n')
 ################################################################################
 
 # 2.A. find the frequency of each category and its percentage.
-school_groups = data %>% group_by(school) %>% summarize(count=n())
+school_groups = data %>% group_by(school) %>% summarise(count=n())
 pct = round(school_groups$count / num_cases * 100, 2)
 cat(paste(school_groups$school, "school frequency=", sep = " ", school_groups$count),  sep="\n")
 cat(paste(school_groups$school, "school percentage=", sep = " ", pct, "%"),  sep="\n")
@@ -142,9 +146,9 @@ p <- ggplot(data=school_groups,
 show(p)
 ################################################################################
 # 2.C. Sort the categories by their frequencies, then using a horizontal barplot to show the result.
-school_groups = data %>% group_by(school) %>% summarize(count=n())
+school_groups = data %>% group_by(school) %>% summarise(count=n())
 p <- ggplot(data=school_groups,
-            aes(x=reorder(as.factor(school), count),
+            aes(x=reorder(as.factor(school), -count),
                 y=count,
                 fill=school)) +
   geom_bar(stat="identity") +
@@ -201,11 +205,12 @@ p <- ggplot(data, aes(x=G1,
 show(p)
 ################################################################################
 # 3.G
+num_bins <- 7
 hex_p <- ggplot(data, aes(G2, G3)) +
-  geom_hex(bins=50) +
+  geom_hex(bins=num_bins) +
   stat_smooth(col='red',
               method = "loess") +
-  labs(title=paste("Scatter Plot of G1 and G2"), x="G1", y="G2")+
+  labs(title=paste("Scatter Plot of G1 and G2 with", num_bins, " bins"), x="G1", y="G2")+
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5),
         legend.position = "left") +
@@ -216,8 +221,15 @@ p <- ggMarginal(hex_p,
                 fill = "slateblue")
 
 show(p)
-
-
+################################################################################
+# 3.H
+# Area + contour
+p <- ggplot(data, aes(x=G1, y=G2) ) +
+  stat_density_2d(aes(fill = ..level..),
+                  geom = "polygon", colour="white") +
+  labs(title="2d Density Plot of G1 and G2 with", x="G1", y="G2")+
+  theme_classic()
+show(p)
 ################################################################################
 # Question 4
 ################################################################################
@@ -226,40 +238,44 @@ show(p)
 ords = data.frame("age"=data$age,
                   "goout"=data$goout,
                   "studytime"=data$studytime,
-                  # "failures"=data$failures,
+                  "failures"= as.factor(data$failures),
                   "health"=data$health,
                   "absences"=data$absences,
                   "G1"=data$G1,
                   "G2"=data$G2,
                   "G3"=data$G3)
 
-ggpairs(ords, upper = list(continuous = "density"))
+p <- ggpairs(ords,
+        lower=list(continuous=wrap("smooth", colour="red")),
+        upper = list(continuous = "density"))
+show(p)
 ################################################################################
 # 4.B
 
 pvalmat <- rcorr(as.matrix(ords))$P
 pvalmat[lower.tri(pvalmat)] <- NA
-melted_pvalmat <- melt(round(pvalmat, 3), na.rm = TRUE)
+melted_pvalmat <- melt(round(pvalmat, 2), na.rm = TRUE)
 
-cormat <- round(cor(ords),2)
+cormat <- rcorr(as.matrix(ords))$r
 cormat[lower.tri(cormat)] <- NA
-melted_cormat <- melt(cormat, na.rm = TRUE) 
+melted_cormat <- melt(round(cormat, 2), na.rm = TRUE) 
 colnames(melted_cormat)[3] <- "Cor"
-ggplot(data = melted_cormat[melted_cormat$Var1 != melted_cormat$Var2, ],
+p <- ggplot(data = melted_cormat[melted_cormat$Var1 != melted_cormat$Var2, ],
        aes(Var2,
            Var1,
            fill=Cor))+
   geom_tile(color = "white")+
-  scale_fill_gradient2(low = "red",
-                       high = "blue",
+  scale_fill_gradient2(low = "blue",
+                       high = "red",
                        limit = c(-1,1)) +
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 25, size = 12))+
   coord_fixed() +
-  geom_text(aes(label = paste(Cor, "\n", "p=", melted_pvalmat$value)),
+  geom_text(aes(label = paste(Cor, "\n", "p =", melted_pvalmat$value)),
             color = "black",
             size = 4) +
   labs(title=paste("Heatmap Correlogram"), x="", y="")
+show(p)
 ################################################################################
 # 4.C
 
@@ -279,10 +295,6 @@ legend(p_3d$xyz.convert(22, 3, 15),
        legend = levels(as.factor(data$sex)), title='sex',
        col =  c("red", "green"),
        pch = 16)
-
-
-
-
 ################################################################################
 # Question 5
 ################################################################################
@@ -342,68 +354,97 @@ show(p)
 ################################################################################
 # Problem 6
 ################################################################################
+sample_size <- 100
+sample_100 <- data[sample(1:num_cases, sample_size), ] %>% select(G3)
 
-conf.interval = t.test(x = data$G3)$conf.int
-conf.interval
-################################################################################
+# 6.A
+xbar = mean(sample_100$G3)
+se = sd(sample_100$G3) / sqrt(sample_size)
+me <- qnorm(0.975) * se
+interval_95 <- xbar + c(-me, me)
+cat("95% confidence interval is=", interval_95)
+###############################################################################
 
-# 6.c
-p <- ggplot(data,
+# 6.C
+p <- ggplot(sample_100,
             aes(x=G3)) +
   geom_histogram(binwidth=1,
-                 fill='white',
+                 fill='lightblue',
                  color="black") +
-  geom_density(alpha=.2,
-               fill="#FF6666") +
   geom_vline(aes(xintercept=mean(G3)),
              color="blue",
              linetype="dashed",
              size=1) +
-  geom_vline(aes(xintercept=conf.interval[1]),
+  geom_vline(aes(xintercept=interval_95[1]),
              color="red",
              linetype="dashed",
              size=1) +
-  geom_vline(aes(xintercept=conf.interval[2]),
+  geom_vline(aes(xintercept=interval_95[2]),
              color="red",
              linetype="dashed",
              size=1) +
-  labs(title="Histogram of G3", x="G3", y = "Count") +
+  labs(title="Histogram of G3",
+       subtitle = "red lines specify 95% confidence interval\nblue line specifies the mean", x="G3", y = "Count") +
   
   theme_classic() +
   theme(plot.title = element_text(hjust = 0.5))
 show(p)
 ################################################################################
-mu_0 = 13
-t.test(cars$speed, mu=mu_0)
+# 6.D
+mu0 = 15
+zscore = (xbar-mu0)/se
+pvalue = 2 * pnorm(abs(zscore), lower.tail = F)
 
+cat("p-value=", pvalue)
+################################################################################
+# 6.F
+miu_a <- mean(data$G3)
+Z_A <- (mu0 - miu_a + c(-me, me)) / se
+beta <- pnorm(Z_A[2]) - pnorm(Z_A[1])
+
+cat("type II error=", round(beta * 100, 4), '%\n')
+################################################################################
+# 6.G
+power <- 1 - beta
+cat("power=", round(power,2)*100, '%\n')
+
+for(mu0 in seq(13, 16, 1)) {
+  miu_a <- mean(data$G3)
+  Z_A <- (mu0 - miu_a + c(-me, me)) / se
+  beta <- pnorm(Z_A[2]) - pnorm(Z_A[1])
+  power <- 1 - beta
+  cat("effect size=", round(abs(mu0 - miu_a), 4), "power=", round(power, 4)*100, '%\n')
+}
 ################################################################################
 # Problem 7
-# A. By conducting a hypothesis test, explain whether there is a significant
-# difference between the mean values of these two variables.
 
+# 7.A
 paired_sample <- data[sample(1:num_cases, 25), ] %>% select(G1, G2)
 
 t.test(x=paired_sample$G1,y=paired_sample$G2, paired = T)
-
-# B. Now, draw 100 independent samples from the dataset for each of these two
-# variables. Then, conduct a hypothesis test to inspect whether there is a
-# significant difference between the mean values of these two variables. Are
-# the results of the test consistent with the 95% confidence interval?
-
+################################################################################
+# 7.B
 first_100 <- data[sample(1:num_cases, 100), ] %>% select(G1)
 second_100 <- data[sample(1:num_cases, 100), ] %>% select(G2)
 
-t.test(first_100, second_100)
+mu0 = 0
+se = sqrt(var(first_100)/100 + var(second_100)/100)
+xbar = mean(first_100$G1) - mean(second_100$G2)
+zscore = (xbar-mu0)/se
+pvalue = 2 * pnorm(abs(zscore), lower.tail = F)
+cat("p-value=", pvalue, '\n')
 
+me <- qnorm(0.975) * se
+interval_95 <- xbar + c(-me, me)
+cat("95 % confidence interval=", interval_95)
+
+################################################################################
 # Problem 8
-# A. Calculate a 95% confidence interval for the median of this variable using the
-# percentile method.
-quantile(data$G3 , c(.025,.975))
-
-# B. Pick a random sample of size 20. Then, using the bootstrapping method,
-# calculate a 95% confidence interval for the mean of this variable using the
-# standard error method.
-
+################################################################################
+# 8.A
+print(quantile(data$G3 , c(.025,.975)))
+################################################################################
+# 8.B
 sample_20 <- data[sample(1:num_cases, 20), 'G3']
                   
 boot_dist <- replicate(1000, mean(sample(sample_20, 20, rep=T)))
@@ -411,21 +452,23 @@ boot_mean <- mean(boot_dist)
 me <- se * qt(0.975, df=1000-1)
 ci <- boot_mean + c(-me, me)
 cat('boot strap confidence interval=', ci)
-
-
-# C. Is there any noticeable difference between these two calculated confidence
-# intervals? Explain your reasoning.
-
+################################################################################
+# 8.C
+hist(boot_dist)
+################################################################################
 # Problem 9
-data
+################################################################################
 
+data$g123sum <- data$G1 + data$G2 + data$G3
 
+res.aov <- aov(g123sum ~ as.factor(failures), data = data)
 
-
-
-
-
-
-
-
-
+print(summary(res.aov))
+ggboxplot(data, x = "failures",
+          y = "g123sum", 
+          color = "failures",
+          palette = c("#00AFBB", "#E7B800", "#FC4E07", "#004A08"),
+          main="Boxplot of mean of G1,G2,G3",
+          ylab = "mean of G1, G2, G3",
+          xlab = "failures")
+TukeyHSD(res.aov)
