@@ -1,0 +1,445 @@
+```{r}
+library(ggplot2)
+library(corrplot)
+```
+
+
+```{r}
+data <- read.csv("StudentsPerformance.csv")
+
+```
+
+```{r}
+data
+
+```
+
+```{r}
+
+# 1.A
+
+n <- nrow(data)
+n1 <- length(data$Fjob)
+n2 <- length(data$Mjob)
+
+
+p1 <- table(data$Mjob)[["at_home"]] / n
+p2 <- table(data$Fjob)[["at_home"]] / n
+
+p_diff <- p2 - p1
+
+se = sqrt(p1*(1-p1)/n1 + p2*(1-p2)/n2)
+me = se * qnorm(0.975)
+
+CI <- p_diff + c(-me, me)
+
+cat("confidence interval = ", "(", CI[1], ",", CI[2], ")")
+```
+
+```{r}
+
+# 1.B
+chisq.test(table(data$Fjob, data$Mjob))
+
+```
+
+```{r}
+# 2
+SAMPLE_SIZE <- 15
+p_hat <- sum(data[sample(1:n, SAMPLE_SIZE), ]$romantic == "yes") / SAMPLE_SIZE
+
+```
+
+```{r}
+n_sim <- 10e4
+sim_dist <- replicate(n_sim,
+                      sum(sample(c("yes", "no"),
+                                 size=SAMPLE_SIZE,
+                                 rep=T)=="yes") / SAMPLE_SIZE)
+
+p_value <- sum(sim_dist > p_hat) / n_sim
+```
+
+```{r}
+# 3.A
+# probability distribution
+expected_table <- table(data$Fjob) / n
+print(round(expected_table, 2))
+```
+
+```{r}
+SAMPLE_SIZE = 100
+
+random_sample <- data[sample(1:n, SAMPLE_SIZE), "Fjob"]
+random_sample_table <- table(random_sample)
+print(random_sample_table)
+
+prb <- ifelse(data$Fjob=="teacher",0.9, 0.1)
+biased_sample <- data[sample(n, SAMPLE_SIZE, prob = prb), "Fjob"]
+
+biased_sample_table <- table(biased_sample)
+print(biased_sample_table)
+```
+
+```{r}
+exptected_probs     <- matrix(expected_table)[1: length(expected_table)]
+random_sample_probs <- matrix(random_sample_table)[1: length(random_sample_table)]
+biased_sample_probs <- matrix(biased_sample_table)[1: length(biased_sample_table)]
+```
+
+```{r}
+chisq.test(random_sample_probs, p=exptected_probs)
+
+```
+
+```{r}
+chisq.test(biased_sample_probs, p=exptected_probs)
+
+```
+
+```{r}
+# 3.B
+chisq.test(table(data$Fjob, data$Mjob))
+
+```
+
+```{r}
+# 4.A
+model_by_study <- lm(formula = G1 ~ studytime, data)
+print(summary(model_by_study))
+
+p <- ggplot(data, aes(x = studytime, y = G1)) +
+  geom_point() +
+  labs(x="G1",
+       y="studytime") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_classic() +  stat_smooth(method = lm, se = FALSE)
+
+show(p)
+```
+
+```{r}
+model_by_G2<- lm(formula = G1 ~ G2, data)
+print(summary(model_by_abs))
+
+p <- ggplot(data, aes(x = G2, y = G1)) +
+  geom_point() +
+  labs(x="G1",
+       y="G2") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_classic() +  stat_smooth(method = lm, se = FALSE)
+
+show(p)
+```
+
+```{r}
+# 4.D
+
+print(summary(model_by_study))
+
+cat('#################################################\n\n')
+
+print(summary(model_by_G2))
+```
+
+```{r}
+print(anova(model_by_study))
+
+cat('#################################################\n\n')
+
+print(anova(model_by_G2))
+```
+
+```{r}
+sample_100 <- data[sample(1:n, 100), ]
+
+observations <- sample_100[1:90, ]
+latents <- sample_100[91:100, ]
+```
+
+```{r}
+m1 <- lm(formula = G1 ~ studytime, observations)
+print(summary(m1))
+
+m2 <- lm(formula = G1 ~ G2, observations)
+print(summary(m2))
+```
+
+```{r}
+# 5.A
+library(GGally)
+
+ords = data.frame(
+                  # "age"=data$age,
+                  "goout"=data$goout,
+                  "studytime"=data$studytime,
+                  "failures"= as.factor(data$failures),
+                  # "health"=data$health,
+                  # "absences"=data$absences,
+                  "G1"=data$G1,
+                  "G2"=data$G2,
+                  "G3"=data$G3)
+
+p <- ggpairs(ords)
+show(p)
+```
+
+```{r}
+```
+
+```{r}
+mlr <- lm(formula = G1 ~ G2 + G3, data)
+summary(mlr)
+```
+
+```{r}
+anova(mlr)
+```
+
+```{r}
+create_formula = function(response, vars) {
+  as.formula(paste(response, paste(vars, collapse=" + "), sep=" ~ "))
+}
+
+
+stepwise_selection = function(method) {
+  full.vars <- c("school","sex","age","Fjob","Mjob","goout","internet","romantic","studytime","failures","health","absences","G2","G3")
+  selected <- rep(0, length(full.vars))
+  max_total_parameter <- 0
+  for(i in seq(1, length(full.vars))) {
+    remaining.vars <- full.vars[selected == 0]
+    
+    if(length(remaining.vars) == 0) {
+      break
+    }
+    max_step_parameter <- 0
+    max_step_var <- NULL
+    for(j in seq(1, length(remaining.vars))) {
+      if(method == "forward") {
+        temp.vars <- c(full.vars[selected == 1], remaining.vars[j])
+      }
+      else if(method == "backward") {
+        temp.vars <- setdiff(full.vars[selected == 0], remaining.vars[j])
+      }
+      formula <- create_formula("G1", temp.vars)
+      model.temp.summary <- summary(lm(formula, data=data))
+      if(model.temp.summary$adj.r.squared > max_step_parameter) {
+        max_step_var <- remaining.vars[j]
+        max_step_parameter <- model.temp.summary$adj.r.squared
+      }
+    }
+    selected[which(full.vars == max_step_var)] = 1
+    if(max_total_parameter < max_step_parameter) {
+      max_total_parameter = max_step_parameter
+    }
+    else {
+      break
+    }
+  }
+  if(method == "forward")
+    return(lm(create_formula("G1", full.vars[selected == 1]), data=data))
+  else if(method == "backward")
+    return(lm(create_formula("G1", full.vars[selected == 0]), data=data))
+}
+
+
+
+
+best_forward <- stepwise_selection(method="forward")
+best_backward <- stepwise_selection(method="backward")
+```
+
+
+```{r}
+
+```
+
+```{r}
+# 6.A
+data["romanticYes"] = data["romantic"] == "yes"
+
+train.size <- floor(4/5 * nrow(data))
+train.ind <- sample(seq_len(nrow(data)), size = train.size)
+train.data <- data[train.ind, ]
+test.data <- data[-train.ind, ]
+
+classifier <- glm(formula = romanticYes ~ school + sex + age + goout + internet + studytime + failures + absences + G1,
+              data=train.data,
+              family=binomial)
+summary(classifier)
+```
+
+```{r}
+# 6.B
+# refrence level = male
+probFemale <- seq(0, 0.99, 0.01)
+OR_RATIO = abs(summary(classifier)$coefficients[3])
+
+getY <- function(x) {
+  return ((OR_RATIO*x/(1-x)) / (1 + (OR_RATIO*x/(1-x))))
+}
+probMale <- sapply(probFemale, getY)
+```
+
+```{r}
+plot(probMale, probFemale, type = "l", lty = 1)
+lines(seq(0, 1, 0.01), seq(0, 1, 0.01), col="green")
+```
+
+```{r}
+library(plotROC)
+library(ggplot2)
+
+test.data$prediction <- predict(classifier, newdata=test.data)
+
+roc_curve <- ggplot(test.data,
+                    aes(m = prediction,
+                        d = romanticYes)) +
+  geom_roc(n.cuts=20,
+           labels=F) + 
+  theme_classic()
+
+show(roc_curve + annotate("text", x = .75, y = .25 , label =
+                          paste("Aear Under Curve =",
+                                round(calc_auc(roc_curve)["AUC"], 3))))
+```
+
+```{r}
+
+```
+
+```{r}
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
